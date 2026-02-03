@@ -19,11 +19,10 @@ from scipy.ndimage import affine_transform
 from sklearn.mixture import GaussianMixture
 from matplotlib.ticker import ScalarFormatter
 from traits.trait_types import self
-from matplotlib.ticker import LogFormatter
-from matplotlib.colors import LogNorm
+
 
 class HspyPrep:
-    
+
     def __init__(self, file_path, step, whole_seconds, contain_bg=False):
         """
         Constructor of the class
@@ -332,160 +331,83 @@ class HspyPrep:
 
         plt.show()
 
-    def plot_heatmap(self, ranges: tuple, vmin=None, vmax=None, title="Heatmap of Summed Intensities"):
-
+    def plot_heatmap(self, ranges: tuple, vmin=None, vmax=None):
         plt.rcParams.update({
-            'font.size': 14,
-            'axes.titlesize': 16,
-            'axes.labelsize': 14,
-            'xtick.labelsize': 12,
-            'ytick.labelsize': 12,
-            'legend.fontsize': 12,
-            'figure.titlesize': 18,
+            'font.size': 14,  # Increase font size
+            'axes.titlesize': 16,  # Title font size
+            'axes.labelsize': 14,  # X and Y label font size
+            'xtick.labelsize': 12,  # X tick font size
+            'ytick.labelsize': 12,  # Y tick font size
+            'legend.fontsize': 12,  # Legend font size
+            'figure.titlesize': 18,  # Overall figure title font size
+            'axes.grid': True,  # Enable grid by default
+            'grid.alpha': 0.6,  # Grid transparency
         })
 
-        # Create output matrix with summed counts in range
-        output = np.zeros((self.dataframe_obj.shape[0], self.dataframe_obj.shape[1]))
+        output = np.zeros((self.dataframe_obj.shape[0], self.dataframe_obj.shape[0], 1))
+
         for i in range(self.dataframe_obj.shape[0]):
-            for j in range(self.dataframe_obj.shape[1]):
+            for j in range(self.dataframe_obj.shape[0]):
                 spectrum = self.dataframe_obj[i, j, :]
-                output[i, j] = HspyPrep.sum_counts_in_range(
-                    spectrum, self.get_wavelengths(), ranges
-                )
+                output[i, j, 0] = HspyPrep.sum_counts_in_range(spectrum, self.get_wavelengths(), ranges)
 
-        # Plot heatmap
-        fig, ax = plt.subplots(figsize=(8, 6))
-        im = ax.imshow(output,
-                    cmap='inferno',
-                    norm=LogNorm(vmin=vmin, vmax=vmax),
-                    origin='upper')
+        # rect_size = min(self.live_scan.shape[0], self.live_scan.shape[1]) // self.live_scan.shape[0]
 
-        ax.set_title(title)
-        ax.set_xlabel("X-axis (pixels)")
-        ax.set_ylabel("Y-axis (pixels)")
-        ax.grid(False)
+        fig, axd = plt.subplot_mosaic([['left', 'right']],
+                                      constrained_layout=True, figsize=[12, 8])
+        axd['left'].imshow(self.se_before, extent=(0, self.live_scan.shape[1], self.live_scan.shape[0], 0),
+                           cmap='gray')
+        axd['left'].set_title('Live Scan of the SEM')
 
-        # Add colorbar
-        cbar = fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.05, pad=0.04)
-        cbar.ax.yaxis.set_major_formatter(LogFormatter())
-        cbar.update_ticks()
+        # top_left = (x - rect_size // 2, y - rect_size // 2)
+        # rect = patches.Rectangle(top_left, rect_size, rect_size, linewidth=1, edgecolor='r', facecolor='none')
+        # axd['left'].add_patch(rect)
+        axd['left'].set_title("Image with Rectangle")
+        axd['left'].set_xlabel("X-axis (pixels)")
+        axd['left'].set_ylabel("Y-axis (pixels)")
+        img2 = axd['left'].imshow(output[:, :, 0], cmap='inferno', alpha=0.6, vmin=vmin, vmax=vmax,
+                                  extent=(0, self.live_scan.shape[1], self.live_scan.shape[0], 0))
+        cbar2 = fig.colorbar(img2, ax=axd['left'], orientation='vertical', fraction=0.045, pad=0.0001)
+        cbar2.formatter = ScalarFormatter(useMathText=True)
+        cbar2.formatter.set_scientific(True)
+        cbar2.formatter.set_powerlimits((-1, 1))
+        cbar2.update_ticks()
+
+        axd['left'].grid(False)
+
+        # -------------------Correction-------------------
+        # index_calc = (self.live_scan.shape[0] * y) + x
+        # transition_array = self.create_transition_with_matrix(self.se_before, self.se_after, self.step,
+        #                                                       self.whole_seconds,
+        #                                                       self.optimal_tx, self.optimal_ty,
+        #                                                       self.optimal_theta, pool_size=1, frame_number=index_calc)
+        # -------------------Correction-------------------
+        # shrinking_factor = int(transition_array.shape[0]) / int(self.live_scan.shape[0])
+        #
+        # rect_size = rect_size * shrinking_factor
+        # start_x = (x * shrinking_factor) + (shrinking_factor / 2)
+        # start_y = (y * shrinking_factor) + (shrinking_factor / 2)
+        #
+        axd['right'].imshow(self.se_before, cmap='gray')
+        axd['right'].set_title('Transitioned Image (Exact Location of Measurement')
+
+        # top_left = (start_x - rect_size // 2, start_y - rect_size // 2)
+        # rect = patches.Rectangle(top_left, rect_size, rect_size, linewidth=1, edgecolor='r', facecolor='none')
+        # axd['right'].add_patch(rect)
+        axd['right'].set_xlabel("X-axis (pixels)")
+        axd['right'].set_ylabel("Y-axis (pixels)")
+        axd['right'].grid(False)
+
+        # axd['bottom'].plot(self.hsp_obj_file_path.axes_manager[2].axis, self.dataframe_obj[y][x],
+        #                    label='Original Spectrum',
+        #                    color='red')
+        #
+        # axd['bottom'].set_title(title)
+        # axd['bottom'].set_xlabel('Wavelength (nm)')
+        # axd['bottom'].set_ylabel('Intensity (a.u.)')
+        # axd['bottom'].legend()
 
         plt.show()
-
-
-    # def plot_heatmap_overlay(
-    #     self,
-    #     ranges: tuple,
-    #     vmin=None,
-    #     vmax=None,
-    #     alpha: float = 0.45,
-    #     title: str = "SEM + CL Heatmap",
-    #     show_colorbar: bool = True,
-    #     save_path: str | None = None,
-    #     ):
-
-    #     # ---- Styling
-    #     plt.rcParams.update({
-    #         'font.size': 14,
-    #         'axes.titlesize': 16,
-    #         'axes.labelsize': 14,
-    #         'xtick.labelsize': 12,
-    #         'ytick.labelsize': 12,
-    #         'legend.fontsize': 12,
-    #         'figure.titlesize': 18,
-    #     })
-
-    #     H, W = self.dataframe_obj.shape[:2]
-    #     live_scan = self.live_scan
-    #     # ---- Build heatmap (sum over spectra within range)
-    #     output = np.zeros((H, W), dtype=float)
-    #     wl = self.get_wavelengths()
-
-    #     # Precompute a mask for the integration window once (faster)
-    #     lo, hi = ranges
-    #     if lo > hi:
-    #         lo, hi = hi, lo
-    #     mask = (wl >= lo) & (wl <= hi)
-
-    #     # Fill the output
-    #     # (Keeping explicit loops for clarity & low memory; vectorization is possible if needed)
-    #     for i in range(H):
-    #         for j in range(W):
-    #             spectrum = self.dataframe_obj[i, j, :]
-    #             # Your existing helper; if you prefer, sum directly with the mask:
-    #             # output[i, j] = np.nansum(np.asarray(spectrum)[mask])
-    #             output[i, j] = HspyPrep.sum_counts_in_range(spectrum, wl, (lo, hi))
-
-    #     # ---- Validate SEM image shape and scale for display
-    #     if live_scan.ndim == 2:
-    #         if live_scan.shape != (H, W):
-    #             raise ValueError(f"live_scan shape {live_scan.shape} must match {(H, W)}")
-    #         sem_img = live_scan
-    #         sem_cmap = "gray"
-    #     elif live_scan.ndim == 3 and live_scan.shape[:2] == (H, W) and live_scan.shape[2] in (3, 4):
-    #         sem_img = live_scan  # RGB/RGBA
-    #         sem_cmap = None
-    #     else:
-    #         raise ValueError("live_scan must be (H, W) grayscale or (H, W, 3/4) RGB(A) and match heatmap size.")
-
-    #     # Robust normalization of SEM image (display only; data unchanged)
-    #     # Scale to [0,1] if not already (handles arbitrary dtype/range)
-    #     sem_min = np.nanmin(sem_img)
-    #     sem_max = np.nanmax(sem_img)
-    #     if sem_cmap is not None:  # grayscale
-    #         denom = (sem_max - sem_min) if sem_max > sem_min else 1.0
-    #         sem_disp = (sem_img - sem_min) / denom
-    #     else:  # RGB(A)
-    #         denom = (sem_max - sem_min) if sem_max > sem_min else 1.0
-    #         sem_disp = (sem_img - sem_min) / denom
-
-    #     # ---- LogNorm bounds (ensure vmin>0)
-    #     finite_pos = output[np.isfinite(output) & (output > 0)]
-    #     if finite_pos.size == 0:
-    #         raise ValueError("Heatmap contains no positive values; cannot use LogNorm. Check your integration range.")
-    #     auto_vmin = np.percentile(finite_pos, 1.0)  # robust against hot pixels
-    #     auto_vmax = np.percentile(finite_pos, 99.0)
-
-    #     vmin = vmin if (vmin is not None and vmin > 0) else max(auto_vmin, np.min(finite_pos))
-    #     vmax = vmax if (vmax is not None and vmax > vmin) else auto_vmax
-
-    #     # ---- Plot
-    #     fig, ax = plt.subplots(figsize=(8, 6))
-
-    #     # Base SEM image
-    #     ax.imshow(sem_disp, cmap=sem_cmap, origin='upper', interpolation='nearest')
-
-    #     # Heatmap overlay
-    #     im = ax.imshow(
-    #         output,
-    #         cmap='inferno',
-    #         norm=LogNorm(vmin=vmin, vmax=vmax),
-    #         origin='upper',
-    #         interpolation='nearest',
-    #         alpha=alpha
-    #     )
-
-    #     ax.set_title(title)
-    #     ax.set_xlabel("X-axis (pixels)")
-    #     ax.set_ylabel("Y-axis (pixels)")
-    #     ax.grid(False)
-
-    #     # Colorbar for the heatmap only
-    #     if show_colorbar:
-    #         cbar = fig.colorbar(im, ax=ax, orientation='vertical', fraction=0.05, pad=0.04)
-    #         cbar.ax.yaxis.set_major_formatter(LogFormatter())
-    #         cbar.update_ticks()
-    #         cbar.set_label(f"Summed counts [{lo}–{hi}]")
-
-    #     fig.tight_layout()
-
-    #     if save_path:
-    #         fig.savefig(save_path, dpi=300, bbox_inches="tight")
-
-    #     plt.show()
-
-
-
 
     def get_transitioned_image(self, x, y):
         index_calc = (self.live_scan.shape[0] * y) + x
