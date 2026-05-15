@@ -24,5 +24,6 @@ if __name__ == "__main__":
         pass
     style.configure("Accent.TButton", foreground="white", background="#0078d4")
 
+    root.resizable(True, True)
     app = DataLoadingPanel(root)
     root.mainloop()
