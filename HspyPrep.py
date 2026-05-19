@@ -12,7 +12,10 @@ import pandas as pd
 from scipy.signal import medfilt
 from PIL import Image
 import hyperspy.api as hs
-import lumispy as lsp
+try:
+    import lumispy as lsp
+except ImportError:
+    lsp = None
 from scipy.optimize import curve_fit
 import os
 from scipy.optimize import minimize
@@ -750,7 +753,7 @@ class HspyPrep:
         return self.hsp_obj_file_path
 
     @staticmethod
-    def hyperspy_to_numpy(hsp_obj: lsp.signals.cl_spectrum.CLSpectrum):
+    def hyperspy_to_numpy(hsp_obj):
         """
         This function converts the hyperspy object to numpy array
         :return: (numpy array) numpy array of the hyperspy object
