@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks, peak_widths
 import matplotlib.patches as patches
+import pandas as pd
 from scipy.signal import medfilt
 from PIL import Image
 import hyperspy.api as hs
@@ -895,3 +896,107 @@ class HspyPrep:
         equalized_image = cdf[image]
 
         return equalized_image
+
+
+class PLData:
+    """
+    Wrapper for PL hyperspectral maps stored in HyperSpy .hspy format.
+
+    Provides the same interface as HspyPrep (get_numpy_spectra, get_wavelengths,
+    get_live_scan) so all CondAns analysis methods work directly with PL data.
+
+    The integrated emission intensity map is used as a stand-in for the SEM
+    live-scan image where applicable.
+    """
+
+    def __init__(self, file_path: str):
+        import hyperspy.api as hs
+
+        self.file_path = file_path
+        s = hs.load(file_path)
+
+        raw = np.array(s.data, dtype=float)
+        axes = s.axes_manager._axes
+
+        # Identify axis roles by name / unit
+        x_idx = y_idx = wl_idx = None
+        for i, a in enumerate(axes):
+            name_lower = a.name.lower()
+            units_lower = a.units.lower()
+            if 'wave' in name_lower or 'nm' in units_lower or 'ev' in units_lower:
+                wl_idx = i
+            elif name_lower == 'x' or name_lower.startswith('x '):
+                x_idx = i
+            elif name_lower == 'y' or name_lower.startswith('y '):
+                y_idx = i
+
+        # Fallbacks
+        if wl_idx is None:
+            wl_idx = raw.ndim - 1
+        remaining = [i for i in range(raw.ndim) if i != wl_idx]
+        if x_idx is None:
+            x_idx = remaining[0] if remaining else 0
+        if y_idx is None:
+            y_idx = remaining[1] if len(remaining) > 1 else 1
+
+        self._wavelengths = np.array(axes[wl_idx].axis, dtype=float)
+
+        # Reorder to (rows=Y, cols=X, wavelengths) to match CondAns convention
+        perm = [y_idx, x_idx, wl_idx]
+        self._spectra = np.transpose(raw, perm)
+
+        # Normalised integrated intensity as substitute for SEM live-scan
+        total = np.sum(self._spectra, axis=2)
+        lo, hi = total.min(), total.max()
+        self._live_scan = ((total - lo) / max(hi - lo, 1e-10)).astype(float)
+
+    def get_numpy_spectra(self) -> np.ndarray:
+        """Returns spectra array shaped (n_rows, n_cols, n_wavelengths)."""
+        return self._spectra
+
+    def get_wavelengths(self) -> np.ndarray:
+        """Returns wavelength axis (nm)."""
+        return self._wavelengths
+
+    def get_live_scan(self) -> np.ndarray:
+        """Returns normalised integrated intensity map (rows × cols)."""
+        return self._live_scan
+
+
+class SingleSpectrumData:
+    """
+    Wraps a single-spectrum CSV file as a 1×1 hyperspectral dataset.
+
+    The CSV must have exactly two columns:
+        column 1 — wavelength (nm)
+        column 2 — intensity
+    An optional single header row is auto-detected.
+    """
+
+    def __init__(self, csv_path: str):
+        self.file_path = csv_path
+
+        # Auto-detect header: try header=None first; if col-0 can't be cast to
+        # float the first row must be a text header → re-read with header=0.
+        df = pd.read_csv(csv_path, header=None)
+        try:
+            df.iloc[:, 0].values.astype(float)
+        except (ValueError, TypeError):
+            df = pd.read_csv(csv_path, header=0)
+
+        self._wavelengths = df.iloc[:, 0].values.astype(float)
+        intensities = df.iloc[:, 1].values.astype(float)
+        # Shape (1, 1, n_wavelengths) so all grid-based CondAns methods work
+        self._spectra = intensities.reshape(1, 1, -1)
+
+    def get_numpy_spectra(self) -> np.ndarray:
+        """Returns array shaped (1, 1, n_wavelengths)."""
+        return self._spectra
+
+    def get_wavelengths(self) -> np.ndarray:
+        """Returns wavelength axis (nm)."""
+        return self._wavelengths
+
+    def get_live_scan(self):
+        """No spatial image for a single spectrum — returns None."""
+        return None

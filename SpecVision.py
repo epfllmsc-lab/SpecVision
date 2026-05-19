@@ -17,13 +17,107 @@ from scipy.signal import find_peaks, peak_widths
 import os
 import pandas as pd
 from skimage.exposure import match_histograms
-from ipywidgets import FloatSlider, IntSlider, Dropdown, Button, HBox, VBox, Output, Layout, BoundedIntText, FloatText, \
-    BoundedFloatText, Checkbox, interact
+from ipywidgets import (
+    FloatSlider, IntSlider, Dropdown, Button, HBox, VBox, Output, Layout,
+    BoundedIntText, FloatText, BoundedFloatText, Checkbox, interact, Tab,
+    Text, Textarea, Label, SelectMultiple, ToggleButton, Accordion
+)
 from IPython.display import display
 import re
 from ipywidgets import HBox, VBox, Button, Dropdown, FloatText, BoundedIntText, Output, Layout, GridBox, HTML
 import numpy as np
 import matplotlib.pyplot as plt
+
+# ── Global CSS injected once when the module is imported ─────────────────────
+_SPECVISION_CSS = HTML("""
+<style>
+/* ── SpecVision global widget styling ─────────────────────────────────────── */
+
+/* Card-style output areas */
+.sv-output { border-radius: 8px !important; background: #fafafa; }
+
+/* Primary action buttons */
+.widget-button.mod-primary {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+    border: none !important; border-radius: 6px !important; color: white !important;
+    font-weight: 600 !important; letter-spacing: 0.3px;
+}
+/* Warning buttons */
+.widget-button.mod-warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+    border: none !important; border-radius: 6px !important;
+    font-weight: 600 !important;
+}
+/* Info buttons */
+.widget-button.mod-info {
+    background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%) !important;
+    border: none !important; border-radius: 6px !important; color: white !important;
+}
+/* Success buttons */
+.widget-button.mod-success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    border: none !important; border-radius: 6px !important; color: white !important;
+    font-weight: 600 !important;
+}
+/* Danger buttons */
+.widget-button.mod-danger {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    border: none !important; border-radius: 6px !important; color: white !important;
+}
+
+/* Inputs */
+.widget-text input, .widget-textarea textarea,
+.widget-bounded-int input, .widget-float-text input,
+.widget-bounded-float input {
+    border-radius: 5px !important;
+    border: 1.5px solid #e2e8f0 !important;
+    padding: 4px 8px !important;
+    transition: border-color 0.2s;
+}
+.widget-text input:focus, .widget-bounded-int input:focus { border-color: #2563eb !important; }
+
+/* Section headers inside widgets */
+.sv-section-header {
+    background: linear-gradient(90deg, #1e293b 0%, #334155 100%);
+    color: #f1f5f9; padding: 8px 14px; border-radius: 7px;
+    font-weight: 700; font-size: 13px; letter-spacing: 0.4px;
+    margin: 6px 0 4px 0;
+}
+.sv-subsection-header {
+    background: #e2e8f0; color: #334155;
+    padding: 5px 12px; border-radius: 5px;
+    font-weight: 600; font-size: 12px; margin: 4px 0;
+}
+
+/* Tab widget */
+.p-TabBar-tab { font-weight: 600 !important; }
+.p-TabBar-tab.p-mod-current { color: #2563eb !important; }
+
+/* Dropdown */
+.widget-dropdown select { border-radius: 5px !important; border: 1.5px solid #e2e8f0 !important; }
+
+/* Output border */
+.widget-output { border-radius: 8px !important; }
+
+/* Dataset tag style */
+.sv-tag {
+    display: inline-block; background: #dbeafe; color: #1e40af;
+    border-radius: 12px; padding: 2px 10px; font-size: 11px;
+    margin: 2px; font-weight: 600;
+}
+</style>
+""")
+
+def _sv_header(title: str, subtitle: str = '') -> HTML:
+    """Return a styled header HTML widget."""
+    sub_html = f'<div style="font-size:11px;font-weight:400;color:#94a3b8;margin-top:2px">{subtitle}</div>' if subtitle else ''
+    return HTML(f"""
+    <div style="background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);
+                color:#f1f5f9;padding:12px 18px;border-radius:9px;margin:4px 0 8px 0;">
+      <div style="font-size:15px;font-weight:700;letter-spacing:0.5px">{title}</div>
+      {sub_html}
+    </div>
+    """)
 
 
 class CondAns:
@@ -2731,3 +2825,296 @@ class CondAns:
             ax.grid(False)
 
         return coord, ax
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DataLoader — interactive widget for building a data_dict for CondAns
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DataLoader:
+    """
+    Interactive Jupyter widget that builds a ``data_dict`` for use with
+    :class:`CondAns`.
+
+    Three data sources are supported:
+
+    * **CL Data** – a root folder whose sub-folders each contain
+      ``HYPCard.sur`` (loaded via :class:`HspyPrep`).
+    * **PL Data** – individual ``.hspy`` files (loaded via :class:`PLData`).
+    * **Single Spectrum** – a two-column CSV (wavelength, intensity) loaded
+      via :class:`SingleSpectrumData`.
+
+    Usage::
+
+        loader = DataLoader()
+        loader.display()
+        # … fill in the UI …
+        data_dict = loader.data_dict
+        analysis = CondAns(data_dict, ref='my_ref', addr_file='.', load_mapping=False)
+    """
+
+    def __init__(self):
+        self.data_dict: dict = {}
+        self._build_ui()
+
+    # ── public ───────────────────────────────────────────────────────────────
+
+    def display(self):
+        """Render the DataLoader widget in the notebook."""
+        display(_SPECVISION_CSS)
+        display(self._root)
+
+    # ── UI construction ───────────────────────────────────────────────────────
+
+    def _build_ui(self):
+        header = _sv_header(
+            "SpecVision · Data Loader",
+            "Build a dataset dictionary for CondAns analysis"
+        )
+
+        # ── CL Tab ──────────────────────────────────────────────────────────
+        cl_root_input = Text(
+            placeholder='/path/to/root/folder',
+            description='Root folder:',
+            style={'description_width': '100px'},
+            layout=Layout(width='460px')
+        )
+        cl_pattern = Text(
+            value='HYP',
+            description='Folder filter:',
+            style={'description_width': '100px'},
+            layout=Layout(width='300px')
+        )
+        cl_step = FloatText(value=1.0, description='Step:', style={'description_width': '60px'}, layout=Layout(width='140px'))
+        cl_secs = FloatText(value=4096.0, description='Seconds:', style={'description_width': '70px'}, layout=Layout(width='160px'))
+        cl_bg = Checkbox(value=False, description='Contains background', layout=Layout(width='200px'))
+        cl_btn = Button(description='Load CL Data', button_style='primary', layout=Layout(width='160px'))
+        cl_out = Output(layout=Layout(border='1px solid #e2e8f0', border_radius='7px', padding='6px', min_height='40px'))
+
+        def _load_cl(_):
+            from HspyPrep import HspyPrep
+            root = cl_root_input.value.strip()
+            pattern = cl_pattern.value.strip()
+            if not root:
+                with cl_out:
+                    cl_out.clear_output()
+                    print("⚠  Please enter a root folder path.")
+                return
+            loaded = []
+            errors = []
+            with cl_out:
+                cl_out.clear_output()
+                for entry in sorted(os.listdir(root)):
+                    full = os.path.join(root, entry)
+                    if os.path.isdir(full) and (not pattern or pattern in entry):
+                        try:
+                            obj = HspyPrep(
+                                full + os.sep,
+                                step=cl_step.value,
+                                whole_seconds=cl_secs.value,
+                                contain_bg=cl_bg.value
+                            )
+                            self.data_dict[entry] = obj
+                            loaded.append(entry)
+                        except Exception as exc:
+                            errors.append(f"{entry}: {exc}")
+                if loaded:
+                    print(f"✔  Loaded {len(loaded)} CL dataset(s):")
+                    for k in loaded:
+                        print(f"   • {k}")
+                if errors:
+                    print(f"\n⚠  Errors ({len(errors)}):")
+                    for e in errors:
+                        print(f"   {e}")
+
+        cl_btn.on_click(_load_cl)
+
+        cl_tab = VBox([
+            HTML('<div class="sv-subsection-header">Load CL maps from a root folder (HspyPrep)</div>'),
+            cl_root_input,
+            HBox([cl_pattern, cl_step, cl_secs, cl_bg], layout=Layout(gap='10px', flex_flow='row wrap')),
+            cl_btn,
+            cl_out,
+        ], layout=Layout(padding='10px', gap='6px'))
+
+        # ── PL Tab ──────────────────────────────────────────────────────────
+        pl_file_input = Text(
+            placeholder='/path/to/file.hspy',
+            description='File path:',
+            style={'description_width': '90px'},
+            layout=Layout(width='460px')
+        )
+        pl_label_input = Text(
+            placeholder='Dataset label (leave blank to use filename)',
+            description='Label:',
+            style={'description_width': '90px'},
+            layout=Layout(width='340px')
+        )
+        pl_add_btn = Button(description='Add PL Dataset', button_style='success', layout=Layout(width='160px'))
+        pl_out = Output(layout=Layout(border='1px solid #e2e8f0', border_radius='7px', padding='6px', min_height='40px'))
+
+        def _add_pl(_):
+            from HspyPrep import PLData
+            fpath = pl_file_input.value.strip()
+            if not fpath:
+                with pl_out:
+                    pl_out.clear_output()
+                    print("⚠  Please enter a file path.")
+                return
+            label = pl_label_input.value.strip() or os.path.splitext(os.path.basename(fpath))[0]
+            with pl_out:
+                pl_out.clear_output()
+                try:
+                    obj = PLData(fpath)
+                    self.data_dict[label] = obj
+                    sh = obj.get_numpy_spectra().shape
+                    wl = obj.get_wavelengths()
+                    print(f"✔  '{label}' loaded")
+                    print(f"   Grid: {sh[0]}×{sh[1]} pixels  |  "
+                          f"Wavelengths: {wl[0]:.1f}–{wl[-1]:.1f} nm  ({sh[2]} points)")
+                except Exception as exc:
+                    print(f"✘  Error: {exc}")
+
+        pl_add_btn.on_click(_add_pl)
+
+        pl_tab = VBox([
+            HTML('<div class="sv-subsection-header">Load a PL hyperspectral map (PLData · .hspy)</div>'),
+            pl_file_input,
+            HBox([pl_label_input, pl_add_btn], layout=Layout(gap='10px', align_items='flex-end')),
+            pl_out,
+        ], layout=Layout(padding='10px', gap='6px'))
+
+        # ── Single Spectrum Tab ──────────────────────────────────────────────
+        ss_file_input = Text(
+            placeholder='/path/to/spectrum.csv',
+            description='CSV path:',
+            style={'description_width': '90px'},
+            layout=Layout(width='460px')
+        )
+        ss_label_input = Text(
+            placeholder='Dataset label',
+            description='Label:',
+            style={'description_width': '90px'},
+            layout=Layout(width='340px')
+        )
+        ss_add_btn = Button(description='Add Spectrum', button_style='success', layout=Layout(width='160px'))
+        ss_preview_btn = Button(description='Preview', button_style='info', layout=Layout(width='100px'))
+        ss_out = Output(layout=Layout(border='1px solid #e2e8f0', border_radius='7px', padding='6px', min_height='40px'))
+
+        def _add_ss(_):
+            from HspyPrep import SingleSpectrumData
+            fpath = ss_file_input.value.strip()
+            if not fpath:
+                with ss_out:
+                    ss_out.clear_output()
+                    print("⚠  Please enter a CSV file path.")
+                return
+            label = ss_label_input.value.strip() or os.path.splitext(os.path.basename(fpath))[0]
+            with ss_out:
+                ss_out.clear_output()
+                try:
+                    obj = SingleSpectrumData(fpath)
+                    self.data_dict[label] = obj
+                    wl = obj.get_wavelengths()
+                    print(f"✔  '{label}' loaded")
+                    print(f"   Wavelengths: {wl[0]:.2f}–{wl[-1]:.2f} nm  ({len(wl)} points)")
+                except Exception as exc:
+                    print(f"✘  Error: {exc}")
+
+        def _preview_ss(_):
+            from HspyPrep import SingleSpectrumData
+            import matplotlib.pyplot as plt
+            fpath = ss_file_input.value.strip()
+            if not fpath:
+                return
+            try:
+                obj = SingleSpectrumData(fpath)
+                wl = obj.get_wavelengths()
+                intensity = obj.get_numpy_spectra()[0, 0, :]
+                with ss_out:
+                    ss_out.clear_output()
+                    fig, ax = plt.subplots(figsize=(7, 3.5))
+                    ax.plot(wl, intensity, color='#2563eb', linewidth=1.5)
+                    ax.set_xlabel('Wavelength (nm)', fontsize=12)
+                    ax.set_ylabel('Intensity (a.u.)', fontsize=12)
+                    label = ss_label_input.value.strip() or os.path.basename(fpath)
+                    ax.set_title(label, fontsize=13, fontweight='bold')
+                    ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.6)
+                    for spine in ax.spines.values():
+                        spine.set_edgecolor('#94a3b8')
+                        spine.set_linewidth(1.2)
+                    plt.tight_layout()
+                    plt.show()
+            except Exception as exc:
+                with ss_out:
+                    ss_out.clear_output()
+                    print(f"✘  Preview failed: {exc}")
+
+        ss_add_btn.on_click(_add_ss)
+        ss_preview_btn.on_click(_preview_ss)
+
+        ss_tab = VBox([
+            HTML('<div class="sv-subsection-header">Load a single spectrum from CSV (two columns: wavelength, intensity)</div>'),
+            ss_file_input,
+            HBox([ss_label_input, ss_add_btn, ss_preview_btn], layout=Layout(gap='10px', align_items='flex-end')),
+            ss_out,
+        ], layout=Layout(padding='10px', gap='6px'))
+
+        # ── Manage / Summary Tab ─────────────────────────────────────────────
+        mgmt_out = Output(layout=Layout(border='1px solid #e2e8f0', border_radius='7px', padding='8px', min_height='60px'))
+        mgmt_refresh_btn = Button(description='Refresh list', button_style='info', layout=Layout(width='140px'))
+        mgmt_remove_input = Text(
+            placeholder='Label to remove',
+            description='Remove:',
+            style={'description_width': '70px'},
+            layout=Layout(width='280px')
+        )
+        mgmt_remove_btn = Button(description='Remove', button_style='danger', layout=Layout(width='100px'))
+
+        def _refresh_mgmt(_=None):
+            with mgmt_out:
+                mgmt_out.clear_output()
+                if not self.data_dict:
+                    print("No datasets loaded yet.")
+                    return
+                print(f"{'Label':<40} {'Type':<22} {'Shape'}")
+                print('-' * 80)
+                for k, v in self.data_dict.items():
+                    t = type(v).__name__
+                    try:
+                        sh = v.get_numpy_spectra().shape
+                        shape_str = f"{sh[0]}×{sh[1]}  ·  {sh[2]} λ-pts"
+                    except Exception:
+                        shape_str = '—'
+                    print(f"{k:<40} {t:<22} {shape_str}")
+
+        def _remove_entry(_):
+            label = mgmt_remove_input.value.strip()
+            with mgmt_out:
+                mgmt_out.clear_output()
+                if label in self.data_dict:
+                    del self.data_dict[label]
+                    print(f"✔  Removed '{label}'")
+                else:
+                    print(f"⚠  '{label}' not found in dataset.")
+            _refresh_mgmt()
+
+        mgmt_refresh_btn.on_click(_refresh_mgmt)
+        mgmt_remove_btn.on_click(_remove_entry)
+
+        mgmt_tab = VBox([
+            HTML('<div class="sv-subsection-header">Loaded datasets — access via loader.data_dict</div>'),
+            HBox([mgmt_refresh_btn, mgmt_remove_input, mgmt_remove_btn], layout=Layout(gap='10px')),
+            mgmt_out,
+        ], layout=Layout(padding='10px', gap='6px'))
+
+        # ── Assemble tabs ────────────────────────────────────────────────────
+        tabs = Tab(children=[cl_tab, pl_tab, ss_tab, mgmt_tab])
+        for i, title in enumerate(['CL Data', 'PL Data (.hspy)', 'Single Spectrum (CSV)', 'Manage']):
+            tabs.set_title(i, title)
+
+        self._root = VBox(
+            [header, tabs],
+            layout=Layout(border='1px solid #e2e8f0', border_radius='10px',
+                          padding='14px', max_width='760px')
+        )
