@@ -198,8 +198,39 @@ class AnalysisPanel:
         self.param_table.configure(yscrollcommand=sb.set)
         sb.pack(side=tk.LEFT, fill=tk.Y)
 
-        self.ss_peaks_container = ttk.Frame(mf)
-        self.ss_peaks_container.pack(fill=tk.X, padx=6, pady=(6, 6))
+        # ── scrollable peak-row area ──────────────────────────────────────
+        _scroll_wrap = ttk.Frame(mf)
+        _scroll_wrap.pack(fill=tk.X, padx=6, pady=(6, 6))
+
+        self._peaks_canvas = tk.Canvas(_scroll_wrap, height=114, highlightthickness=0,
+                                       background=self.window.cget("bg"))
+        self._peaks_canvas.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        _peaks_vsb = ttk.Scrollbar(_scroll_wrap, orient="vertical",
+                                   command=self._peaks_canvas.yview)
+        _peaks_vsb.pack(side=tk.LEFT, fill=tk.Y)
+        self._peaks_canvas.configure(yscrollcommand=_peaks_vsb.set)
+
+        self.ss_peaks_container = ttk.Frame(self._peaks_canvas)
+        self._peaks_win = self._peaks_canvas.create_window(
+            (0, 0), window=self.ss_peaks_container, anchor="nw"
+        )
+
+        def _sync_scroll(event=None):
+            self._peaks_canvas.configure(scrollregion=self._peaks_canvas.bbox("all"))
+
+        def _sync_width(event):
+            self._peaks_canvas.itemconfig(self._peaks_win, width=event.width)
+
+        self.ss_peaks_container.bind("<Configure>", _sync_scroll)
+        self._peaks_canvas.bind("<Configure>", _sync_width)
+
+        def _on_mousewheel(event):
+            self._peaks_canvas.yview_scroll(int(-1 * event.delta), "units")
+
+        self._peaks_canvas.bind("<MouseWheel>", _on_mousewheel)
+        self.ss_peaks_container.bind("<MouseWheel>", _on_mousewheel)
+
         self.ss_peak_rows = []  # list[dict]
 
         self._add_peak_row(default_exists=False)
@@ -472,6 +503,18 @@ class AnalysisPanel:
         func_cb.bind('<<ComboboxSelected>>', _toggle_gamma)
         _toggle_gamma()
 
+        # forward mousewheel on every child widget so scrolling works anywhere
+        def _mw(event):
+            self._peaks_canvas.yview_scroll(int(-1 * event.delta), "units")
+        for _w in rowf.winfo_children():
+            _w.bind("<MouseWheel>", _mw)
+        rowf.bind("<MouseWheel>", _mw)
+
+        # scroll to the bottom so the new row is always visible
+        self.ss_peaks_container.update_idletasks()
+        self._peaks_canvas.configure(scrollregion=self._peaks_canvas.bbox("all"))
+        self._peaks_canvas.yview_moveto(1.0)
+
         self.ss_peak_rows.append({
             'frame': rowf,
             'func_widget': func_cb,
@@ -495,6 +538,8 @@ class AnalysisPanel:
             return
         row = self.ss_peak_rows.pop()
         row['frame'].destroy()
+        self.ss_peaks_container.update_idletasks()
+        self._peaks_canvas.configure(scrollregion=self._peaks_canvas.bbox("all"))
 
     def _collect_peak_params(self):
         mapping = {
