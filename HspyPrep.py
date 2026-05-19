@@ -962,6 +962,16 @@ class PLData:
         """Returns normalised integrated intensity map (rows × cols)."""
         return self._live_scan
 
+    def apply_filter_noises(self, kernel_size=7):
+        """Apply median filter to every spectrum in the map."""
+        for i in range(self._spectra.shape[0]):
+            for j in range(self._spectra.shape[1]):
+                self._spectra[i, j] = medfilt(self._spectra[i, j], kernel_size=kernel_size)
+
+    def remove_background(self, file_path=None):
+        """No-op: PL maps don't carry a CL-style background file."""
+        pass
+
 
 class SingleSpectrumData:
     """
@@ -1000,3 +1010,11 @@ class SingleSpectrumData:
     def get_live_scan(self):
         """No spatial image for a single spectrum — returns None."""
         return None
+
+    def apply_filter_noises(self, kernel_size=7):
+        """Apply median filter to the single spectrum."""
+        self._spectra[0, 0] = medfilt(self._spectra[0, 0], kernel_size=kernel_size)
+
+    def remove_background(self, file_path=None):
+        """No-op: single CSV spectra don't use an external background file."""
+        pass

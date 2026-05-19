@@ -1,18 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-try:
-    from HspyPrep import HspyPrep
-    from SpecVision import CondAns
-except ImportError:
-    try:
-        messagebox.showerror(
-            "Error",
-            "Could not import 'HspyPrep' or 'new_cd'.\n"
-            "Make sure 'HspyPrep.py' and 'new_cd.py' are in the same directory as this app."
-        )
-    except Exception:
-        print("ImportError: Could not import HspyPrep/new_cd")
-    raise
+from tkinter import ttk
 
 
 
