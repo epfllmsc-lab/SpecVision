@@ -101,7 +101,12 @@ class PreprocessingPanel:
             self.wavelengths = hsp_obj.get_wavelengths()
             ax = self.preview_plot.ax
             ax.clear()
-            ax.plot(self.wavelengths, self.raw_spectrum, label=f"Raw @ ({row},{col})")
+            ax.plot(self.wavelengths, self.raw_spectrum,
+                    color="#64748B", linewidth=1.5, alpha=0.85, label=f"Raw  ({row}, {col})")
+            ax.fill_between(self.wavelengths, self.raw_spectrum, alpha=0.06, color="#64748B")
+            ax.set_xlabel("Wavelength (nm)")
+            ax.set_ylabel("Intensity (a.u.)")
+            ax.set_title(f"Preview  —  {exp_name}", pad=8)
             self.update_sample_plot()
         except Exception as e:
             messagebox.showerror("Plot Error", f"Could not load sample: {e}\n{traceback.format_exc()}")
@@ -118,8 +123,11 @@ class PreprocessingPanel:
                 bg_data = self._get_background_for_preview()
                 if bg_data is not None: preview_spectrum -= bg_data
             processed_spectrum = medfilt(preview_spectrum, kernel_size=kernel)
-            ax.plot(self.wavelengths, processed_spectrum, label=f"Preview (BG: {do_bg}, K: {kernel})", linestyle='--')
-            ax.legend(fontsize="small")
+            ax.plot(self.wavelengths, processed_spectrum,
+                    color="#1A56DB", linewidth=1.8, linestyle="--",
+                    label=f"Processed  (BG={do_bg}, k={kernel})")
+            ax.legend(fontsize=9, framealpha=0.9)
+            self.preview_plot.fig.tight_layout(pad=1.4)
             self.preview_plot.canvas.draw()
         except Exception as e:
             print(f"Preview Error: {e}")

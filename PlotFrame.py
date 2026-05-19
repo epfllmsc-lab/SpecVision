@@ -7,8 +7,9 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 class PlotFrame(ttk.Frame):
     def __init__(self, master, figsize=(6, 3)):
         super().__init__(master)
-        self.fig = plt.Figure(figsize=figsize)
+        self.fig = plt.Figure(figsize=figsize, facecolor="white")
         self.ax = self.fig.add_subplot(111)
+        self.fig.subplots_adjust(left=0.13, right=0.96, top=0.91, bottom=0.16)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.toolbar = NavigationToolbar2Tk(self.canvas, self, pack_toolbar=False)

@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import matplotlib as mpl
 from DataLoadingPanel import DataLoadingPanel
 
 try:
@@ -156,6 +157,74 @@ def _apply_theme(style: ttk.Style) -> None:
               background=[("active", BORDER), ("pressed", BORDER)])
 
 
+def _setup_mpl_style() -> None:
+    """Apply a clean, publication-quality matplotlib style to every figure."""
+    _COLORS = [
+        "#1A56DB",  # primary blue
+        "#E3342F",  # red
+        "#38A169",  # green
+        "#D69E2E",  # amber
+        "#805AD5",  # purple
+        "#DD6B20",  # orange
+        "#0694A2",  # teal
+        "#C81E1E",  # dark red
+    ]
+    mpl.rcParams.update({
+        # Figure
+        "figure.facecolor":       "white",
+        "figure.edgecolor":       "white",
+        "figure.dpi":             100,
+        # Axes background & spines
+        "axes.facecolor":         "#FAFBFC",
+        "axes.edgecolor":         "#CBD5E1",
+        "axes.linewidth":         0.9,
+        "axes.spines.top":        False,
+        "axes.spines.right":      False,
+        "axes.labelsize":         11,
+        "axes.titlesize":         12,
+        "axes.titleweight":       "semibold",
+        "axes.titlepad":          9,
+        "axes.labelpad":          6,
+        # Grid
+        "axes.grid":              True,
+        "grid.color":             "#E2E8F0",
+        "grid.linewidth":         0.7,
+        "grid.alpha":             1.0,
+        "grid.linestyle":         "-",
+        # Color cycle
+        "axes.prop_cycle":        mpl.cycler("color", _COLORS),
+        # Lines & markers
+        "lines.linewidth":        1.6,
+        "lines.markersize":       5,
+        "lines.solid_capstyle":   "round",
+        # Ticks
+        "xtick.labelsize":        10,
+        "ytick.labelsize":        10,
+        "xtick.direction":        "in",
+        "ytick.direction":        "in",
+        "xtick.major.size":       4,
+        "ytick.major.size":       4,
+        "xtick.minor.visible":    False,
+        "ytick.minor.visible":    False,
+        # Font
+        "font.family":            "sans-serif",
+        "font.size":              11,
+        # Legend
+        "legend.fontsize":        10,
+        "legend.framealpha":      0.92,
+        "legend.edgecolor":       "#CBD5E1",
+        "legend.fancybox":        True,
+        "legend.borderpad":       0.6,
+        "legend.labelspacing":    0.3,
+        # Images
+        "image.cmap":             "viridis",
+        # Save
+        "savefig.dpi":            300,
+        "savefig.bbox":           "tight",
+        "savefig.facecolor":      "white",
+    })
+
+
 def _center_window(root: tk.Tk, width: int, height: int) -> None:
     root.update_idletasks()
     sw = root.winfo_screenwidth()
@@ -166,6 +235,8 @@ def _center_window(root: tk.Tk, width: int, height: int) -> None:
 
 
 if __name__ == "__main__":
+    _setup_mpl_style()
+
     root = tk.Tk()
     root.configure(bg="#F4F6F9")
 

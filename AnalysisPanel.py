@@ -53,8 +53,10 @@ class AnalysisPanel:
 
         header = ttk.Frame(main)
         header.pack(fill=tk.X)
-        ttk.Label(header, text="Analysis", font=("Segoe UI", 16, "bold")).pack(side=tk.LEFT)
-        ttk.Label(header, text=f"Reference: {self.ref_key}").pack(side=tk.RIGHT)
+        ttk.Label(header, text="SpecVision", style="AppTitle.TLabel").pack(side=tk.LEFT)
+        ttk.Label(header, text="  /  Analysis", style="AppSub.TLabel").pack(side=tk.LEFT, pady=(6, 0))
+        ttk.Label(header, text=f"ref: {self.ref_key}", foreground="#718096").pack(side=tk.RIGHT, pady=(6, 0))
+        ttk.Separator(main, orient="horizontal").pack(fill=tk.X, pady=(4, 6))
 
         self.nb = ttk.Notebook(main)
         self.nb.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
@@ -239,17 +241,14 @@ class AnalysisPanel:
         try:
             _, data, wl, r, c = self._get_current_data()
             spec = data[r, c, :].astype(float)
-            # k = int(self.ss_kernel.get())
-            # if k % 2 == 0:
-            #     k += 1
-            # sm = medfilt(spec, kernel_size=k)
             ax = self.ss_plot.ax
             ax.clear()
-            ax.plot(wl, spec)
-            # ax.plot(wl, sm, "--", label=f"Medfilt k={k}")
+            ax.plot(wl, spec, linewidth=1.6)
+            ax.fill_between(wl, spec, alpha=0.07)
             ax.set_xlabel("Wavelength (nm)")
             ax.set_ylabel("Intensity (a.u.)")
-            # ax.legend()
+            ax.set_title(f"Spectrum  —  row {r},  col {c}", pad=8)
+            self.ss_plot.fig.tight_layout(pad=1.4)
             self.ss_plot.canvas.draw()
         except Exception as e:
             messagebox.showerror("Single Spectrum", f"Failed to preview: {e}\n{traceback.format_exc()}")
@@ -270,18 +269,22 @@ class AnalysisPanel:
             ax.clear()
 
             if img is None:
-                ax.text(0.5, 0.5, 'No map image\nprovided', ha='center', va='center')
+                ax.text(0.5, 0.5, 'No map image\navailable', ha='center', va='center',
+                        fontsize=10, color='#718096', linespacing=1.6)
+                ax.set_facecolor('#F8FAFC')
                 ax.axis('off')
             else:
                 n_rows, n_cols = data.shape[:2]
                 ih, iw = img.shape[:2]
                 cw, ch = iw / n_cols, ih / n_rows
-                ax.imshow(img, cmap='gray', extent=[0, iw, ih, 0])
+                _cmap = 'gray' if hasattr(hsp, 'hsp_obj_file_path') else 'magma'
+                ax.imshow(img, cmap=_cmap, extent=[0, iw, ih, 0])
 
-                ax.set_title('Sample map')
+                ax.set_title(f'Map  —  {n_rows} × {n_cols} px', pad=6)
                 ax.set_axis_off()
 
-                rect = plt.Rectangle((c * cw, r * ch), cw, ch, linewidth=1.6, edgecolor='red', facecolor='none')
+                rect = plt.Rectangle((c * cw, r * ch), cw, ch,
+                                     linewidth=2.0, edgecolor='#FF4444', facecolor='#FF444418')
                 ax.add_patch(rect)
 
                 roi = self._current_roi_bounds()
@@ -646,27 +649,29 @@ class AnalysisPanel:
             model_obj = self.best_model
             best_r2 = self.best_r2
 
+            _COMP_COLORS = ["#1A56DB", "#38A169", "#D69E2E", "#805AD5", "#DD6B20", "#0694A2", "#C81E1E"]
             ax = self.ss_plot.ax
             ax.clear()
-            if self.fit_bkg_flag:
-                ax.plot(wl, intensity - self.params_fit['bkg_c'].value, label='data')
-            else:
-                ax.plot(wl, intensity, label='data')
+            y_data = (intensity - self.params_fit['bkg_c'].value) if self.fit_bkg_flag else intensity
+            ax.plot(wl, y_data, color="#64748B", linewidth=1.4, alpha=0.85, label="Data")
+            ax.fill_between(wl, y_data, alpha=0.05, color="#64748B")
             if model_res is not None:
-                if self.fit_bkg_flag:
-                    ax.plot(wl, model_res.best_fit - self.params_fit['bkg_c'].value, label='fitted data')
-                else:
-                    ax.plot(wl, model_res.best_fit, label='best fit')
+                y_fit = (model_res.best_fit - self.params_fit['bkg_c'].value) if self.fit_bkg_flag else model_res.best_fit
+                ax.plot(wl, y_fit, color="#E3342F", linewidth=2.0, linestyle="--", label="Best fit")
                 if self.show_components.get() and model_obj is not None:
                     comps = model_obj.eval_components(params=self.params_fit, x=wl)
-                    for name, y in comps.items():
+                    for idx, (name, y) in enumerate(comps.items()):
                         if name.endswith('bkg_'):
                             continue
-                        ax.plot(wl, y, alpha=0.7, linestyle='-', label=name)
+                        col = _COMP_COLORS[idx % len(_COMP_COLORS)]
+                        ax.plot(wl, y, linewidth=1.5, color=col, label=name.rstrip("_"))
+                        ax.fill_between(wl, y, alpha=0.13, color=col)
                 self._fill_param_table(model_res.params)
             ax.set_xlabel("Wavelength (nm)")
             ax.set_ylabel("Intensity (a.u.)")
-            ax.legend()
+            ax.set_title(f"Fit  —  row {r},  col {c}", pad=8)
+            ax.legend(fontsize=9, loc="best")
+            self.ss_plot.fig.tight_layout(pad=1.4)
             self.ss_plot.canvas.draw()
 
             if best_r2 is not None:
@@ -1282,26 +1287,29 @@ class AnalysisPanel:
 
             # 1. Waterfall
             for i, y in enumerate(specs):
-                ax_wf.plot(wl, y + i * off, color=colors[i], lw=1)
+                ax_wf.plot(wl, y + i * off, color=colors[i], lw=1.2)
                 if self.wf_show_fit.get() and i < len(fits_overlay) and fits_overlay[i] is not None:
-                    ax_wf.plot(wl, fits_overlay[i] + i * off, 'k--', lw=0.8, alpha=0.7)
-            ax_wf.set_title(f"Waterfall (N={N})")
+                    ax_wf.plot(wl, fits_overlay[i] + i * off, color='white', lw=1.2, alpha=0.55)
+            ax_wf.set_title(f"Waterfall  —  {N} spectra", pad=8)
             ax_wf.set_xlabel("Wavelength (nm)")
+            ax_wf.set_ylabel("Spectra (offset)")
             ax_wf.set_yticks([])
+            ax_wf.spines["left"].set_visible(False)
 
             # 2. Heatmap (Inverted X, Y=Pixels)
             ax_hm.imshow(specs, aspect='auto', cmap=cmap, extent=[wl[0], wl[-1], N, 0])
-            ax_hm.set_title("Heatmap")
+            ax_hm.set_title("Spectral heatmap", pad=6)
             ax_hm.set_xlabel("Wavelength (nm)")
-            ax_hm.set_ylabel("Pixel Index")
-            ax_hm.invert_xaxis()  # Invert X as requested
+            ax_hm.set_ylabel("Pixel index")
+            ax_hm.invert_xaxis()
 
             # 3. Max Intensity (Inverted axes: X=Pixels, Y=Int)
             mx_vals = np.max(specs, axis=1)
-            ax_mx.plot(np.arange(N), mx_vals, 'k-', lw=0.8, alpha=0.5)
-            ax_mx.scatter(np.arange(N), mx_vals, c=np.arange(N), cmap=cmap, s=15)
-            ax_mx.set_title("Max Intensity")
-            ax_mx.set_xlabel("Pixel Index")
+            ax_mx.fill_between(np.arange(N), mx_vals, alpha=0.18, color=colors[N // 2])
+            ax_mx.plot(np.arange(N), mx_vals, color="#334155", lw=1.0, alpha=0.6)
+            ax_mx.scatter(np.arange(N), mx_vals, c=np.arange(N), cmap=cmap, s=18, zorder=3)
+            ax_mx.set_title("Peak intensity along path", pad=6)
+            ax_mx.set_xlabel("Pixel index")
             ax_mx.set_ylabel("Intensity")
             ax_mx.set_xlim(0, N)
 
@@ -1719,11 +1727,13 @@ class AnalysisPanel:
             # Colorbar
             sm = plt.cm.ScalarMappable(cmap=self.pmap_cmap.get(), norm=plt.Normalize(vmin=vmin, vmax=vmax))
             sm.set_array([])
-            cbar = self.pmap_fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
-            cbar.set_label(unit_label)
+            cbar = self.pmap_fig.colorbar(sm, ax=ax, fraction=0.040, pad=0.03, shrink=0.85)
+            cbar.set_label(unit_label, fontsize=11)
+            cbar.ax.tick_params(labelsize=9)
 
-            ax.set_title(f"Map: {unit_label}")
+            ax.set_title(f"Parameter map  —  {unit_label}", pad=10, fontsize=12, fontweight="semibold")
             ax.set_axis_off()
+            self.pmap_fig.tight_layout(pad=1.5)
 
             self.pmap_canvas.draw()
 
